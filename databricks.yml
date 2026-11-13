@@ -1,0 +1,109 @@
+# Databricks Asset Bundle for GridLens. Targets serverless jobs compute, which is what
+# Databricks Free Edition provides. Deploy with:
+#   databricks bundle deploy -t dev && databricks bundle run -t dev gridlens_pipeline
+bundle:
+  name: gridlens
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for the bronze/silver/gold tables (Free Edition default is `workspace`).
+    default: workspace
+  schema:
+    description: Schema for tables, views and the raw-file volume.
+    default: gridlens
+  parts:
+    description: Number of 1M-row LCL source files to ingest (1-168).
+    default: "2"
+  min_households:
+    description: Minimum reporting households for a half hour to enter the forecast series.
+    default: "20"
+  holdout_days:
+    description: Days held out at the end of the series to evaluate the forecast.
+    default: "28"
+
+artifacts:
+  gridlens_wheel:
+    type: whl
+    build: uv build --wheel
+    path: .
+
+resources:
+  jobs:
+    gridlens_pipeline:
+      name: gridlens-pipeline
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: gridlens_env
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ./dist/*.whl
+      tasks:
+        - task_key: download_raw
+          environment_key: gridlens_env
+          python_wheel_task:
+            package_name: gridlens
+            entry_point: gridlens
+            parameters: [download, --catalog, "${var.catalog}", --schema, "${var.schema}", --parts, "${var.parts}"]
+
+        - task_key: bronze
+          depends_on: [{task_key: download_raw}]
+          environment_key: gridlens_env
+          python_wheel_task:
+            package_name: gridlens
+            entry_point: gridlens
+            parameters: [bronze, --catalog, "${var.catalog}", --schema, "${var.schema}"]
+
+        - task_key: silver_quality
+          depends_on: [{task_key: bronze}]
+          environment_key: gridlens_env
+          python_wheel_task:
+            package_name: gridlens
+            entry_point: gridlens
+            parameters: [silver, --catalog, "${var.catalog}", --schema, "${var.schema}"]
+
+        - task_key: gold
+          depends_on: [{task_key: silver_quality}]
+          environment_key: gridlens_env
+          python_wheel_task:
+            package_name: gridlens
+            entry_point: gridlens
+            parameters: [gold, --catalog, "${var.catalog}", --schema, "${var.schema}"]
+
+        - task_key: forecast
+          depends_on: [{task_key: gold}]
+          environment_key: gridlens_env
+          python_wheel_task:
+            package_name: gridlens
+            entry_point: gridlens
+            parameters:
+              - forecast
+              - --catalog
+              - "${var.catalog}"
+              - --schema
+              - "${var.schema}"
+              - --min-households
+              - "${var.min_households}"
+              - --holdout-days
+              - "${var.holdout_days}"
+
+        - task_key: sql_views
+          depends_on: [{task_key: forecast}]
+          environment_key: gridlens_env
+          python_wheel_task:
+            package_name: gridlens
+            entry_point: gridlens
+            parameters: [views, --catalog, "${var.catalog}", --schema, "${var.schema}"]
+
+        - task_key: report
+          depends_on: [{task_key: sql_views}]
+          notebook_task:
+            notebook_path: ./notebooks/gridlens_report.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+
+targets:
+  dev:
+    mode: development
+    default: true

@@ -1,0 +1,16 @@
+name: gridlens
+services:
+  spark:
+    build: .
+    image: gridlens-local:latest
+    mem_limit: 2g
+    cpus: 2
+    environment:
+      GRIDLENS_DRIVER_MEMORY: 1g
+      GRIDLENS_SPARK_MASTER: local[2]
+    volumes:
+      - ./data:/app/data
+      - ${GRIDLENS_LAKE_DIR:-./lakehouse}:/app/lakehouse
+      - ./tests:/app/tests
+      - ./src:/app/src
+    command: ["gridlens", "all", "--lake", "lakehouse", "--source", "data/raw"]
