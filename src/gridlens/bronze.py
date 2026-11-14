@@ -27,6 +27,8 @@ def read_raw_csv(spark: SparkSession, source: str) -> DataFrame:
     return (
         spark.read.option("header", "true")
         .option("mode", "PERMISSIVE")
+        # Only *.csv: the raw directory or Unity Catalog volume may hold other files.
+        .option("pathGlobFilter", "*.csv")
         .schema(RAW_SCHEMA)
         .csv(source)
         .withColumn("source_file", F.col("_metadata.file_name"))

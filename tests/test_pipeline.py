@@ -42,7 +42,7 @@ def lake(spark, tmp_path_factory):
         shutil.copy(FIXTURES / name, raw / name)
     lake = Lakehouse(spark, base_path=str(root / "lakehouse"))
     lake.ensure_schema()
-    lake.raw_glob = f"{raw}/*.csv"
+    lake.raw_glob = str(raw)
     return lake
 
 

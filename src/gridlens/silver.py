@@ -54,46 +54,46 @@ def _parsed(df: DataFrame) -> DataFrame:
 class Rule:
     name: str
     description: str
-    fails: Column
+    fails: str  # Spark SQL predicate over the parsed columns; true (or NULL) means the row fails
 
 
 RULES: list[Rule] = [
     Rule(
         "invalid_household_id",
         "household id missing or not of the form MAC + 6 digits",
-        F.col("household_id").isNull() | ~F.col("household_id").rlike(r"^MAC\d{6}$"),
+        r"household_id IS NULL OR NOT household_id RLIKE '^MAC[0-9]{6}$'",
     ),
     Rule(
         "invalid_tariff",
         f"tariff group not one of {', '.join(VALID_TARIFFS)}",
-        F.col("tariff").isNull() | ~F.col("tariff").isin(*VALID_TARIFFS),
+        f"tariff IS NULL OR tariff NOT IN ({', '.join(repr(t) for t in VALID_TARIFFS)})",
     ),
-    Rule("unparseable_timestamp", "DateTime missing or not yyyy-MM-dd HH:mm:ss", F.col("ts").isNull()),
+    Rule("unparseable_timestamp", "DateTime missing or not yyyy-MM-dd HH:mm:ss", "ts IS NULL"),
     Rule(
         "off_interval_timestamp",
         "timestamp not on a half-hour boundary",
-        ~F.minute("ts").isin(0, 30) | (F.second("ts") != 0),
+        "minute(ts) NOT IN (0, 30) OR second(ts) != 0",
     ),
     Rule(
         "missing_kwh",
         "kWh reading empty or the literal 'Null'",
-        F.col("kwh_str").isNull() | (F.col("kwh_str") == "") | (F.lower("kwh_str") == "null"),
+        "kwh_str IS NULL OR kwh_str = '' OR lower(kwh_str) = 'null'",
     ),
-    Rule("non_numeric_kwh", "kWh reading is not a number", F.col("kwh").isNull() | F.isnan("kwh")),
+    Rule("non_numeric_kwh", "kWh reading is not a number", "kwh IS NULL OR isnan(kwh)"),
     Rule(
         "kwh_out_of_range",
         f"kWh per half hour outside [0, {MAX_KWH_PER_HALF_HOUR}]",
-        (F.col("kwh") < 0) | (F.col("kwh") > MAX_KWH_PER_HALF_HOUR),
+        f"kwh < 0 OR kwh > {MAX_KWH_PER_HALF_HOUR}",
     ),
 ]
-DUPLICATE_RULE = Rule("duplicate_reading", "second or later reading for the same household and half hour", F.lit(False))
+DUPLICATE_RULE = Rule("duplicate_reading", "second or later reading for the same household and half hour", "false")
 ALL_RULES = [*RULES, DUPLICATE_RULE]
 
 
 def first_failed_rule() -> Column:
     expr = F.lit(None).cast("string")
     for rule in reversed(RULES):
-        expr = F.when(F.coalesce(rule.fails, F.lit(True)), F.lit(rule.name)).otherwise(expr)
+        expr = F.when(F.coalesce(F.expr(rule.fails), F.lit(True)), F.lit(rule.name)).otherwise(expr)
     return expr
 
 

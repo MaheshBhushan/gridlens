@@ -64,7 +64,7 @@ def load_series(halfhourly: DataFrame, min_households: int) -> pd.Series:
 
 def design(index: pd.DatetimeIndex, lags: dict[int, np.ndarray]) -> np.ndarray:
     slot = (index.hour * 2 + index.minute // 30).to_numpy()
-    dow = index.dayofweek.to_numpy()
+    dow = index.day_of_week.to_numpy()
     cols = [np.ones(len(index))]
     cols += [lags[d] for d in LAG_DAYS]
     cols += [(slot == k).astype(float) for k in range(1, SLOTS_PER_DAY)]

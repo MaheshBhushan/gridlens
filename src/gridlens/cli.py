@@ -31,7 +31,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     where.add_argument("--lake", help="local directory holding the Delta tables")
     where.add_argument("--catalog", help="Unity Catalog catalog (Databricks)")
     p.add_argument("--schema", default="gridlens", help="Unity Catalog schema (Databricks)")
-    p.add_argument("--source", help="raw CSV directory or glob (default: <lake>/../data/raw or the raw volume)")
+    p.add_argument("--source", help="raw CSV directory (default: <lake>/../data/raw, or the raw volume on Databricks)")
     p.add_argument("--parts", type=int, default=2, help="download: number of 1M-row source files")
     p.add_argument("--max-reject-ratio", type=float, default=0.05)
     p.add_argument("--min-households", type=int, default=20)
@@ -78,13 +78,11 @@ def main(argv: list[str] | None = None) -> None:
     spark = get_spark()
     lake = Lakehouse(spark, base_path=args.lake) if args.lake else Lakehouse(spark, catalog=args.catalog, schema=args.schema)
     stage = args.stage
-    raw_dir = args.source or lake.raw_dir()
-    # Ingest only *.csv files; the raw directory or volume may hold other files.
-    source = raw_dir if raw_dir.endswith(".csv") else f"{raw_dir.rstrip('/')}/*.csv"
+    source = args.source or lake.raw_dir()
 
     if stage == "download":
         lake.ensure_schema(with_raw_volume=True)
-        for path in download.download_parts(raw_dir, args.parts):
+        for path in download.download_parts(source, args.parts):
             print(f"downloaded {path}")
         return
     lake.ensure_schema()

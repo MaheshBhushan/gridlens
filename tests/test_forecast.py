@@ -8,7 +8,7 @@ from gridlens.forecast import BASELINE_NAME, HORIZON_DAYS, MODEL_NAME, SLOTS_PER
 def weekly_series(days: int, noise: float = 0.0, seed: int = 0) -> pd.Series:
     idx = pd.date_range("2013-01-07", periods=days * SLOTS_PER_DAY, freq="30min")
     slot = idx.hour * 2 + idx.minute // 30
-    base = 0.15 + 0.1 * np.sin(2 * np.pi * slot / SLOTS_PER_DAY) + 0.05 * (idx.dayofweek >= 5)
+    base = 0.15 + 0.1 * np.sin(2 * np.pi * slot / SLOTS_PER_DAY) + 0.05 * (idx.day_of_week >= 5)
     rng = np.random.default_rng(seed)
     return pd.Series(base + noise * rng.standard_normal(len(idx)), index=idx)
 
@@ -47,7 +47,7 @@ def test_splits_and_future_horizon():
 
 
 def test_gaps_are_skipped():
-    series = weekly_series(35)
+    series = weekly_series(42)
     series.iloc[20 * SLOTS_PER_DAY : 21 * SLOTS_PER_DAY] = np.nan
     out, _ = run_forecast(series, holdout_days=7)
     assert out.loc[out["split"] != "future", "actual_kwh"].notna().all()
